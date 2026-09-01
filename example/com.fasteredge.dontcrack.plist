@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.fasteredge.dontcrack</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/dontcrack-mac</string>
+        <string>-path</string>
+        <string>/usr/local/bin/edgecore</string>
+        <string>-pre</string>
+        <string>/usr/local/bin/edgecore-pre.sh</string>
+        <string>-start-now</string>
+        <string>-auto-restart</string>
+        <string>-max-retries</string>
+        <string>3</string>
+        <string>-port</string>
+        <string>11883</string>
+        <string>-file-log</string>
+        <string>-log-path</string>
+        <string>/var/log/dontcrack/</string>
+        <string>-log-life-day</string>
+        <string>7</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>WorkingDirectory</key>
+    <string>/var/lib/dontcrack</string>
+    <key>StandardOutPath</key>
+    <string>/var/log/dontcrack/manager.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/dontcrack/manager.stderr.log</string>
+</dict>
+</plist>

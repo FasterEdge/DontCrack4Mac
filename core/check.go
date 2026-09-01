@@ -1,0 +1,98 @@
+// FasterEdge 开源项目 · https://github.com/FasterEdge · https://gitee.com/FasterEdge
+package core
+
+import (
+	"crypto/subtle"
+	"errors"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// 通过魔数检查是不是 macOS 可执行文件 (Mach-O / universal binary)
+func isBinaryExecutable(data []byte) bool {
+	// macOS Mach-O 文件魔数（大小端 + 32/64 位）：
+	//   0xFEEDFACE (32位) / 0xFEEDFACF (64位) / 0xCEFAEDFE / 0xCFFAEDFE（大小端）
+	//   universal binary 通用二进制魔数 0xCAFEBABE / 0xBEBAFECA
+	if len(data) >= 4 {
+		magic := uint32(data[0])<<24 | uint32(data[1])<<16 | uint32(data[2])<<8 | uint32(data[3])
+		switch magic {
+		case 0xFEEDFACE, 0xFEEDFACF, 0xCEFAEDFE, 0xCFFAEDFE, 0xCAFEBABE, 0xBEBAFECA:
+			return true
+		}
+	}
+
+	// 其他二进制文件特征（简单检查）
+	for _, b := range data[:min(len(data), 100)] {
+		if b == 0 {
+			return true // 包含空字节，可能是二进制文件
+		}
+	}
+	return false
+}
+
+// 基于文件头/扩展名识别类型，用于决定如何启动
+func detectFileType(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err != nil && err != io.EOF {
+		return "", err
+	}
+	// 读取的内容转换为字符串
+	content := string(buffer[:n])
+
+	// 首先检查是否是脚本文件
+	if strings.HasPrefix(content, "#!") { // 只要第一行以 "#!" 开头，就认为是脚本文件
+		lines := strings.Split(content, "\n")
+		shebang := lines[0] // 获得第一行（带脚本格式）
+		switch {
+		case strings.Contains(shebang, "sh"): // 如果脚本格式中包含 "sh"，则认为是 shell 脚本
+			return "shell_script", nil
+		default:
+			return "script", nil // 如果是其他脚本格式但不包含 "sh"，则认为是普通脚本，也尝试使用sh去执行，报错也将被正常记录
+		}
+	}
+
+	// 通过文件扩展名进行检查
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".sh":
+		return "shell_script", nil
+	// 待支持的其他类型可以在这里添加
+	default:
+		if isBinaryExecutable(buffer[:n]) {
+			return "binary_executable", nil
+		}
+		return "unknown", nil
+	}
+}
+
+// 校验请求中携带的 password，如果未配置密码则直接通过。
+// 凭据来源优先级: Authorization: Bearer > X-DontCrack-Password > query 参数(兼容, 将弃用)。
+// query 传密码会进入浏览器历史与访问日志，仅作向后兼容保留。
+func checkPassword(r *http.Request, expected string) error {
+	if expected == "" {
+		return nil
+	}
+	pw := ""
+	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+		pw = strings.TrimPrefix(auth, "Bearer ")
+	} else if v := r.Header.Get("X-DontCrack-Password"); v != "" {
+		pw = v
+	} else {
+		pw = r.URL.Query().Get("password")
+	}
+	// 常量时间比较，避免时序侧信道
+	if subtle.ConstantTimeCompare([]byte(pw), []byte(expected)) == 1 {
+		return nil
+	}
+	return errors.New("unauthorized")
+}
